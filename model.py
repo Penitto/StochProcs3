@@ -68,4 +68,5 @@ def calibrate_hyper(df, model, model_spec):
 
 
 def get_data():
+    df = None
     return df
