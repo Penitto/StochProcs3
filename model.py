@@ -28,8 +28,8 @@ def select_features(
     target_name='target' #название колонки с таргетом
     ):
     y = df.pop('target')
-    pass#логика
-    selected features=[]
+    #логика
+    selected_features=[]
     return df[selected_features+[target_name]]
 
 
@@ -45,6 +45,7 @@ def calibrate_hyper(df, model, model_spec):
 
 
 def get_data():
+    df=None
     return df
 
 def plotMovingAverage(df, series, n):
