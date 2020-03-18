@@ -21,19 +21,6 @@ def plotMovingAverage(df, series, n):
     plt.legend(loc="upper left")
     plt.grid(True)
 
-
-def plotMovingAverage(df, series, n):
-    rolling_mean = series.rolling(window=n).mean()
-
-    plt.figure(figsize=(15,5))
-    plt.title("Moving average\n window size = {}".format(n))
-    plt.plot(rolling_mean, "g", label="Rolling mean trend")
-
-    plt.plot(df[n:], label="Actual values")
-    plt.legend(loc="upper left")
-    plt.grid(True)
-
-
 def call_script(data_file_path, date):
     pass 
     forecast_on_next_day=None
