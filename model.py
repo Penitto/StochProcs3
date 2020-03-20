@@ -3,6 +3,49 @@ import numpy as np
 import pandas as pd
 import json
 import matplotlib.pyplot as plt
+import ruptures as rpt
+from cumsum import change_point_detection
+
+
+def detect_change_point(series, jump, n_bkps, pen):
+    """
+
+    series: numpy array please
+    jump: размер сэмпла
+    n_bkps: количество возвращаемых остановок
+    pen: пенальти для Pelt
+
+    """
+
+    alg_dynp = rpt.Dynp(jump=jump).fit_predict(series, n_bkps=n_bkps)
+
+    alg_pelt = rpt.Pelt(jump=jump).fit_predict(series, pen=pen)
+
+    alg_bin = rpt.Binseg(jump=jump).fit_predict(series, n_bkps=n_bkps)
+
+    alg_bot = rpt.BottomUp(jump=jump).fit_predict(series, n_bkps=n_bkps)
+
+    alg_win = rpt.Window(jump=jump).fit_predict(series, n_bkps=n_bkps)
+
+    alg_cumsum = change_point_detection(series.tolist())
+    
+    res = {}
+
+    for i in alg_dynp + alg_pelt + alg_bin + alg_bot + alg_win + alg_cumsum:
+        if i in res:
+            res[i] += 1
+        else:
+            res[i] = 1
+
+    # Какая-то магия с поиском нескольких максимальных значений
+    itemMaxValue = max(res.items(), key=lambda x: x[1])
+    listOfKeys = []
+    for key, value in res.items():
+        if value == itemMaxValue[1]:
+            listOfKeys.append(key)
+    return listOfKeys
+
+
 
 
 def is_weekday(date):
