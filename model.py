@@ -29,24 +29,24 @@ def detect_change_point(series, jump, n_bkps, pen):
 
     alg_cumsum = change_point_detection(series.tolist())
     
+    # Получили разладки от нескольких алгоритмов
+    # Теперь найдём точки, которые предсказывались алгоритмами несколько раз
     res = {}
-
     for i in alg_dynp + alg_pelt + alg_bin + alg_bot + alg_win + alg_cumsum:
         if i in res:
             res[i] += 1
         else:
             res[i] = 1
 
-    # Какая-то магия с поиском нескольких максимальных значений
+    del res[0]
+    del res[len(series)]
+
     itemMaxValue = max(res.items(), key=lambda x: x[1])
     listOfKeys = []
     for key, value in res.items():
         if value == itemMaxValue[1]:
             listOfKeys.append(key)
-    return listOfKeys
-
-
-
+    return listOfKeys   
 
 def is_weekday(date):
     with open("prod_cal.json", "r") as read_file:
