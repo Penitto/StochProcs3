@@ -5,7 +5,7 @@ import json
 import matplotlib.pyplot as plt
 import ruptures as rpt
 from cumsum import change_point_detection
-
+from sklearn.linear_model import LinearRegression
 
 def detect_change_point(series, jump, n_bkps, pen):
     """
@@ -78,7 +78,8 @@ def generate_features(
 
 def select_features(
     df,#датафрейм со всеми фичами, в т ч генерированными
-    target_name='target' #название колонки с таргетом
+    target, #серия с таргетом
+    base_model,
     ):
     y = df.pop('target')
     #логика
@@ -93,10 +94,76 @@ def adjustment_detection(idontknow):
 def feature_selection_stability_control(idontknow):
     return None
 
-def calibrate_hyper(df, model, model_spec):
-    return model_spec
+def calibrate_hyper(
+    df,
+    target,
+    model):
+    model_spec = get_model_spec()
+    trained_model=None
+    return trained_model
 
 
-def get_data():
+def get_data(date_until,target_data_file):
     df = None
-    return df
+    target=None
+    return df, target
+
+def get_dates_list(target_data_file):
+    dates=[]
+    return dates
+
+def get_model():
+    return LinearRegression
+def get_model_spec():
+    spec=dict()
+    return spec
+
+
+
+def report_metric(target, predictions):
+    metric = target-predictions
+    print(f'metric is {metric.mean()}')
+    return metric
+
+STARTING_TICK=100
+PREDICTIONS_FILEPATH='predictions.xlsx'
+
+
+
+
+
+
+
+def prepare_complete_model_and_data(date,target_data_file):
+
+    data, target = get_data(date,target_data_file)
+    base_model = get_model()
+    full_data = generate_features(data)
+    selected_features = select_features(
+        full_data.loc[:date],
+        target.loc[   :date],
+        base_model)
+    clean_data = full_data.loc[:,selected_features]
+    model = calibrate_hyper(
+        clean_data.loc[:data],
+        target.loc[    :data],
+        base_model)
+    return model, clean_data, target
+
+
+
+def general_loop(target_data_file):
+    datelist = get_dates_list(target_data_file)
+    start_date = datelist[STARTING_TICK]
+    model, data, target = prepare_complete_model_and_data(start_date,target_data_file)
+    predictions = pd.Series(index=target.index)
+    for day_count, cur_date in enumerate(datelist[STARTING_TICK+1:]):
+        predictions[cur_date] = model.predict(data.loc[cur_date])
+        predictions.to_excel(PREDICTIONS_FILEPATH)
+        if detect_change_point(target[:cur_date]):
+            model, data, target = prepare_complete_model_and_data(cur_date, target_data_file)
+    metric_results = report_metric(target, predictions)
+
+# def predict_on_date(date):
+
+
