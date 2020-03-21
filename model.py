@@ -87,12 +87,6 @@ def select_features(
     return df[selected_features+[target_name]]
 
 
-def adjustment_detection(idontknow):
-    return None
-
-    
-def feature_selection_stability_control(idontknow):
-    return None
 
 def calibrate_hyper(
     df,
@@ -114,6 +108,7 @@ def get_dates_list(target_data_file):
 
 def get_model():
     return LinearRegression
+    
 def get_model_spec():
     spec=dict()
     return spec
@@ -127,10 +122,6 @@ def report_metric(target, predictions):
 
 STARTING_TICK=100
 PREDICTIONS_FILEPATH='predictions.xlsx'
-
-
-
-
 
 
 
