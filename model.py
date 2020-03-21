@@ -7,7 +7,7 @@ import ruptures as rpt
 from cumsum import change_point_detection
 from sklearn.linear_model import LinearRegression
 
-def detect_change_point(series, jump, n_bkps, pen):
+def get_change_point(series, jump, n_bkps, pen):
     """
 
     series: numpy array please
@@ -47,6 +47,10 @@ def detect_change_point(series, jump, n_bkps, pen):
         if value == itemMaxValue[1]:
             listOfKeys.append(key)
     return listOfKeys   
+
+def is_change_point(series, jump, n_bkps, pen, lim):
+    res = get_change_point(series, jump, n_bkps, pen)
+    return res[-1] >= len(series) - lim
 
 def is_weekday(date):
     with open("prod_cal.json", "r") as read_file:
