@@ -96,14 +96,14 @@ def get_model(data, target,use_ensemble=True):
 
 
     params1 = {'el__alpha' : np.logspace(-5, 2, 30), 
-               'el__l1_ratio' : np.linspace(0, 1, 10),
+               'el__l1_ratio' : np.linspace(0, 1, 3),
                'pca__n_components':[2,5,10]}
     
-    params2 = {'rf__n_estimators' : range(10, 101, 10),
-               'rf__max_depth' : range(2,10),
+    params2 = {'rf__n_estimators' : range(10, 101, 30),
+               'rf__max_depth' : [2,5,9],
                'pca__n_components':[2,5,10]}
 
-    params3 = {'lgb__learning_rate' : np.logspace(-6, 0, 10),
+    params3 = {'lgb__learning_rate' : np.logspace(-6, 0, 5),
                'lgb__n_estimators' : range(10, 101, 30),
                'lgb__max_depth' : [6,9,12],
                'pca__n_components':[2,5,10]}
