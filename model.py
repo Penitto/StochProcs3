@@ -5,13 +5,22 @@ import json
 import matplotlib.pyplot as plt
 import ruptures as rpt
 from cumsum import change_point_detection
-from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression, ElasticNet
 from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 from sklearn.ensemble import RandomForestRegressor
 from lightgbm import LGBMRegressor
 import logging 
 import warnings
+import tsfresh
+from tsfresh import extract_features
+from tsfresh.utilities.dataframe_functions import impute
+from tsfresh.feature_extraction import EfficientFCParameters
+from tsfresh import select_features
+import datetime
+
 warnings.filterwarnings('ignore')
 
 def get_logger():
@@ -84,29 +93,49 @@ def is_change_point(series, jump=5, n_bkps=5, pen=10, lim=10):
     return res[-1] >= len(series) - lim
 
 def get_model(data, target,use_ensemble=True):
-    params1 = {'alpha' : np.logspace(0.0001, 1, 30), 
-               'l1_ratio' : np.linspace(0, 1, 10)}
-    
-    params2 = {'n_estimators' : range(10, 101, 10),
-               'max_depth' : range(2,10)}
 
-    params3 = {'learning_rate' : np.logspace(0.0001, 0.5, 10),
-               'n_estimators' : range(10, 101, 30),
-               'max_depth' : [6,9,12],
-               'verbose':[-1]}
 
-    lgb = LGBMRegressor()
+    params1 = {'el__alpha' : np.logspace(-5, 2, 30), 
+               'el__l1_ratio' : np.linspace(0, 1, 10),
+               'pca__n_components':[2,5,10]}
     
+    params2 = {'rf__n_estimators' : range(10, 101, 10),
+               'rf__max_depth' : range(2,10),
+               'pca__n_components':[2,5,10]}
+
+    params3 = {'lgb__learning_rate' : np.logspace(-6, 0, 10),
+               'lgb__n_estimators' : range(10, 101, 30),
+               'lgb__max_depth' : [6,9,12],
+               'pca__n_components':[2,5,10]}
+
+
+    rf = Pipeline([
+        ('scale', StandardScaler()),
+        ('pca',PCA()),
+        ('rf', RandomForestRegressor())
+    ])
+    el = Pipeline([    
+        ('scale', StandardScaler()),
+        ('pca',PCA()),
+        ('el', ElasticNet(max_iter=5000))
+    ])
+    lgb = Pipeline([    
+        ('scale', StandardScaler()),
+        ('pca',PCA()),
+        ('lgb', LGBMRegressor())
+    ])
+
+    # lgb = LGBMRegressor()
     gr_lgb = GridSearchCV(lgb, params3, cv=TimeSeriesSplit(), scoring='neg_mean_squared_error',refit=True)
     gr_lgb.fit(data, target)
     logger.info('Booster params discovered')
 
-    el = ElasticNet(max_iter=5000)
+    # el = ElasticNet(max_iter=5000)
     gr_el = GridSearchCV(el, params1, cv=TimeSeriesSplit(), scoring='neg_mean_squared_error',refit=True)
     gr_el.fit(data, target)
     logger.info('ElasticNet params discovered')
 
-    rf = RandomForestRegressor()
+    # rf = RandomForestRegressor()
     gr_rf = GridSearchCV(rf, params2, cv=TimeSeriesSplit(), scoring='neg_mean_squared_error',refit=True)
     gr_rf.fit(data, target)
     logger.info('RandomForest params discovered')
@@ -121,9 +150,9 @@ def get_model(data, target,use_ensemble=True):
                'lgbm' : gr_lgb.best_estimator_}
     if use_ensemble:
         estimators = [
-                    ('elastic', ElasticNet(**gr_el.best_params_)), 
-                    ('random_forest', RandomForestRegressor(**gr_rf.best_params_)),
-                    ('lgbm', LGBMRegressor(**gr_lgb.best_params_))]
+                    ('elastic', gr_el.best_estimator_), 
+                    ('random_forest', gr_rf.best_estimator_),
+                    ('lgbm', gr_lgb.best_estimator_)]
 
 
         from sklearn.ensemble import StackingRegressor
@@ -131,7 +160,7 @@ def get_model(data, target,use_ensemble=True):
 
         stacked = StackingRegressor(
             estimators=estimators,
-            final_estimator=RandomForestRegressor(n_estimators=30),
+            final_estimator=RandomForestRegressor(n_estimators=100, max_depth=3),
             passthrough=True)
         stacked.fit(data, target)
         logger.info('Ensemble fitted')
@@ -159,9 +188,9 @@ def add_tax_dates(df, example='Target'):
         if not ((i >= corp[str(i.year)][0]) and (i <= corp[str(i.year)][1])):
             # Если до первого марта
             if corp[str(i.year)][0] > i:
-                data['corp_tax'][i] = (i.date() - corp[str(i.year - 1)][1]).days / (corp[str(i.year)][0] - corp[str(i.year - 1)][1]).days
+                df['corp_tax'][i] = (i.date() - corp[str(i.year - 1)][1]).days / (corp[str(i.year)][0] - corp[str(i.year - 1)][1]).days
             else:
-                data['corp_tax'][i] = (i.date() - corp[str(i.year)][1]).days / (corp[str(i.year + 1)][0] - corp[str(i.year)][1]).days
+                df['corp_tax'][i] = (i.date() - corp[str(i.year)][1]).days / (corp[str(i.year + 1)][0] - corp[str(i.year)][1]).days
 
     # Налог добавленной стоимости
     df['val_add_tax'] = np.ones_like(df[example].values)
@@ -217,19 +246,36 @@ def call_script(data_file_path, date):
     forecast_on_next_day=None
     return None
 
-def generate_features(
-    df #датафрейм со всеми содержательными фичами, даты в качестве индекса 
-    ):
-    new_df=df.copy()
-    pass#логика
-    return new_df
+# def generate_features(
+#     df #датафрейм со всеми содержательными фичами, даты в качестве индекса 
+#     ):
+#     new_df=df.copy()
+#     pass#логика
+#     return new_df
 
-def select_features(
-    df,#датафрейм со всеми фичами, в т ч генерированными
-    target, #серия с таргетом
-    ):
-    return df.columns
+# def select_features(
+#     df,#датафрейм со всеми фичами, в т ч генерированными
+#     target, #серия с таргетом
+#     ):
+#     return df.columns
 
+def generate_and_select_features(d,t, date):
+    original_index = d.index
+    thres = d.loc[:date].shape[0]
+    settings = EfficientFCParameters()
+    
+    d['time_index'] = d.index
+    d['id'] = np.arange(d.shape[0])
+
+
+    extracted_features = extract_features(d, column_sort="time_index", column_id='id',default_fc_parameters=settings)
+    extracted_features=extracted_features.loc[:, extracted_features.apply(pd.Series.nunique)>1]
+    impute(extracted_features)
+    t.index=extracted_features.index
+    features_filtered = select_features(extracted_features.iloc[:thres], t)
+    final_features = extracted_features.loc[:,features_filtered.columns]
+    final_features.index = original_index
+    return final_features
 
 
 
@@ -276,17 +322,49 @@ def get_data(target_data_file='project_3_train+test.xlsx'):
         data_liquidity.set_index('Date'),
     ], how='left')
     econ_data = econ_data.interpolate(method='polynomial', order=3)
+
+
+    econ_data = add_tax_dates(econ_data, econ_data.columns[0])
     return econ_data, target
 
 
 
 
-def report_metric(
-    target, 
-    predictions):
-    metric = np.abs(target-predictions)
-    print(f'metric is {metric.mean()}')
-    return metric
+
+
+def report_metric(predictions, target_data_file):
+    data,t = get_data()
+    data1 = data.loc[:,['RUONIA','Ключевая ставка']].rename(columns={'RUONIA':'ON_Keyrate','Ключевая ставка':'Keyrate'})
+    data1 = pd.merge(
+        data1,
+        t,
+        left_index=True,
+        right_index=True,
+        how='left'
+    )
+    data1 = pd.merge(
+        data1,
+        predictions,
+        left_index=True,
+        right_index=True,
+        how='right'
+    )
+    data1.columns = list(data1.columns[:-1]) + ['Predict']
+
+    data1['Prev_target'] = data1['Target'].shift(-1)
+    data1['Day_AdjKeyrate'] = data1.apply(lambda x: (x['Keyrate']-0.5)/365/100 if x['Predict'] <= x['Prev_target'] else (x['Keyrate'] + 0.4)/365/100 , axis=1)
+    data1['Day_result'] = (data1['Prev_target']-data1['Predict'])*data1['Day_AdjKeyrate']
+    data1['ON_AdjKeyrate'] = data1.apply(lambda x: (x['ON_Keyrate']-1)/365/100 if x['Target'] >= 0 else (x['ON_Keyrate'] + 1)/365/100 , axis=1)
+    data1['ON_result'] = data1['Target']*data1['ON_AdjKeyrate']
+    data1['Total_result'] = data1['Day_result']+data1['ON_result']
+
+    logger.info(f"Cуммарные издержки за период составили {data1['Total_result'].dropna().sum()} ")
+
+
+    errors = sum(np.abs(data1['Predict'] - data1['Target'])>0.15)
+    logger.info(f"Cуммарное количество нарушений требуемого интервала точности равно {errors}, {round((errors/data1.shape[0])*3, 2)}%")
+    return data1['Total_result'].dropna().sum()
+
 
 STARTING_TICK=100
 PREDICTIONS_FILEPATH='predictions.xlsx'
@@ -297,13 +375,14 @@ def prepare_complete_model_and_data(date,target_data_file):
 
     data, target = get_data(target_data_file)
     logger.info('Raw data fetched')
-    full_data = generate_features(data)
+    # full_data = generate_features(data)
     logger.info('New features generated')
-    selected_features = select_features(
-        full_data.loc[:date],
-        target.loc[   :date],)
-    clean_data = full_data.loc[:,selected_features]
-    logger.info('Data selected')
+    clean_data = generate_and_select_features(data,target, date)
+    # selected_features = select_features(
+    #     full_data.loc[:date],
+    #     target.loc[   :date],)
+    # clean_data = full_data.loc[:,selected_features]
+    logger.info('New features generated and selected')
     model = get_model(
         clean_data.loc[:date],
         target.loc[    :date])
@@ -325,7 +404,7 @@ def general_loop(target_data_file='project_3_train+test.xlsx'):
         if is_change_point(target[:cur_date]):
             logger.info(f'Change-point detected on {cur_date}')
             model, data, target = prepare_complete_model_and_data(cur_date, target_data_file)
-    metric_results = report_metric(target, predictions)
+    metric_results = report_metric(target, target_data_file=target_data_file)
 
 if __name__=='__main__':
     general_loop()
