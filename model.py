@@ -212,7 +212,9 @@ def get_data(date_until,target_data_file='project_3_train+test.xlsx'):
         data_keyrate.set_index('Date'),
         data_liquidity.set_index('Date'),
     ], how='left')
+    
 
+    econ_data = econ_data.interpolate(method='polynomial', order=3)
     return econ_data, target
 
 
