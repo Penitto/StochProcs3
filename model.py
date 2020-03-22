@@ -138,6 +138,55 @@ def get_model(data, target,use_ensemble=True):
         return stacked
     return res_est[sorted(res_scores, key=lambda x: (-res_scores[x], x))[0]]
 
+def add_tax_dates(df, example='Target'):
+    """
+        df: датафрейм, в который вносим данные
+        example : название столбца, который можно взять как образец формы для np.ones_like
+            default: 'Target'
+    """
+
+    with open("corporate_tax.json", "r") as read_file:
+        corporate_tax = json.load(read_file)
+
+    with open("value_added_tax.json", "r") as read_file:
+        val_add_tax = json.load(read_file)
+
+    # Налог на прибыль
+    df['corp_tax'] = np.ones_like(df[example].values)
+    corp = {i : [datetime.datetime.strptime(i, '%Y-%m-%d').date() for i in corporate_tax[i]] for i in corporate_tax}
+    for i in df.index:
+        # Если не налоговый день
+        if not ((i >= corp[str(i.year)][0]) and (i <= corp[str(i.year)][1])):
+            # Если до первого марта
+            if corp[str(i.year)][0] > i:
+                data['corp_tax'][i] = (i.date() - corp[str(i.year - 1)][1]).days / (corp[str(i.year)][0] - corp[str(i.year - 1)][1]).days
+            else:
+                data['corp_tax'][i] = (i.date() - corp[str(i.year)][1]).days / (corp[str(i.year + 1)][0] - corp[str(i.year)][1]).days
+
+    # Налог добавленной стоимости
+    df['val_add_tax'] = np.ones_like(df[example].values)
+    val_add = {i : {j : [datetime.datetime.strptime(k, '%Y-%m-%d').date() for k in val_add_tax[i][j]] for j in val_add_tax[i]} for i in val_add_tax}
+    for i in df.index:
+        # Если не налоговый день
+        if ((i > val_add[str(i.year)]['1'][1]) and (i < val_add[str(i.year)]['2'][0])) \
+            or ((i > val_add[str(i.year)]['2'][1]) and (i < val_add[str(i.year)]['3'][0])) \
+            or ((i > val_add[str(i.year)]['3'][1]) and (i < val_add[str(i.year)]['4'][0])) \
+            or ((i > val_add[str(i.year)]['4'][1]) and (i < val_add[str(i.year + 1)]['1'][0])):
+                if i.quarter == 1:
+                    df['val_add_tax'][i] = (i.date() - val_add[str(i.year)]['1'][1]).days / (val_add[str(i.year)]['2'][0] - val_add[str(i.year)]['1'][1]).days
+                elif i.quarter == 2:
+                    df['val_add_tax'][i] = (i.date() - val_add[str(i.year)]['2'][1]).days / (val_add[str(i.year)]['3'][0] - val_add[str(i.year)]['2'][1]).days
+                elif i.quarter == 3:
+                    df['val_add_tax'][i] = (i.date() - val_add[str(i.year)]['3'][1]).days / (val_add[str(i.year)]['4'][0] - val_add[str(i.year)]['3'][1]).days
+                else:
+                    df['val_add_tax'][i] = (i.date() - val_add[str(i.year)]['4'][1]).days / (val_add[str(i.year + 1)]['1'][0] - val_add[str(i.year)]['4'][1]).days
+
+    return df
+
+
+
+
+
 def is_weekday(date):
     with open("prod_cal.json", "r") as read_file:
         holidays = json.load(read_file)
