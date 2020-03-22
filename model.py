@@ -6,6 +6,30 @@ import matplotlib.pyplot as plt
 import ruptures as rpt
 from cumsum import change_point_detection
 from sklearn.linear_model import LinearRegression
+import logging 
+
+def get_logger():
+    # From Official documentation
+    logger = logging.getLogger('base')
+    logger.setLevel(logging.DEBUG)
+    # create file handler which logs even debug messages
+    fh = logging.FileHandler(f'./logs from {datetime.datetime.isoformat(datetime.datetime.now())[:10]}.log')
+    fh.setLevel(logging.DEBUG)
+    # create console handler with a higher log level
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    # create formatter and add it to the handlers
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    ch.setFormatter(formatter)
+    fh.setFormatter(formatter)
+    # add the handlers to logger
+    logger.addHandler(ch)
+    logger.addHandler(fh)
+    return logger
+logger=get_logger()
+
+
+
 
 def get_change_point(series, jump, n_bkps, pen):
     """
