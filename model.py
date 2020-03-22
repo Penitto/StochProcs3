@@ -112,14 +112,16 @@ def get_dates_list(target_data_file):
 
 def get_model():
     return LinearRegression
-    
+
 def get_model_spec():
     spec=dict()
     return spec
 
 
 
-def report_metric(target, predictions):
+def report_metric(
+    target, 
+    predictions):
     metric = target-predictions
     print(f'metric is {metric.mean()}')
     return metric
@@ -131,7 +133,7 @@ PREDICTIONS_FILEPATH='predictions.xlsx'
 
 def prepare_complete_model_and_data(date,target_data_file):
 
-    data, target = get_data(date,target_data_file)
+    data, target = get_data(target_data_file)
     base_model = get_model()
     full_data = generate_features(data)
     selected_features = select_features(
@@ -160,5 +162,4 @@ def general_loop(target_data_file):
     metric_results = report_metric(target, predictions)
 
 # def predict_on_date(date):
-
 
