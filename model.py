@@ -130,17 +130,14 @@ def get_model(data, target,use_ensemble=True):
         ('lgb', LGBMRegressor())
     ])
 
-    # lgb = LGBMRegressor()
     gr_lgb = GridSearchCV(lgb, params3, cv=TimeSeriesSplit(), scoring='neg_mean_squared_error',refit=True)
     gr_lgb.fit(data, target)
     logger.info('Booster params discovered')
 
-    # el = ElasticNet(max_iter=5000)
     gr_el = GridSearchCV(el, params1, cv=TimeSeriesSplit(), scoring='neg_mean_squared_error',refit=True)
     gr_el.fit(data, target)
     logger.info('ElasticNet params discovered')
 
-    # rf = RandomForestRegressor()
     gr_rf = GridSearchCV(rf, params2, cv=TimeSeriesSplit(), scoring='neg_mean_squared_error',refit=True)
     gr_rf.fit(data, target)
     logger.info('RandomForest params discovered')
@@ -273,8 +270,6 @@ def generate_and_select_features(d,t, date):
 
 def get_data(target_data_file='project_3_train+test.xlsx'):
     base_dates = get_dates_list(target_data_file)
-    # if base_dates.max()>date_until:
-    #     base_dates = base_dates[base_dates<=date_until]
     base_df=pd.DataFrame(index=base_dates)
     
     target = pd.read_excel(target_data_file)
@@ -385,7 +380,7 @@ def prepare_complete_model_and_data(date,target_data_file, bottom_date=None):
 
 
 def general_loop(target_data_file='project_3_train+test.xlsx'):
-    logger.info('Script started!')
+    logger.info('Script for total history started!')
     datelist = get_dates_list(target_data_file).reset_index(drop=True)
     start_date = datelist[STARTING_TICK]
     model, data, target = prepare_complete_model_and_data(start_date,target_data_file)
@@ -406,7 +401,7 @@ def general_loop(target_data_file='project_3_train+test.xlsx'):
 
 
 def predict_one_day(date_string, target_data_file='project_3_train+test.xlsx'):
-    logger.info('Script started!')
+    logger.info('Script for single date started!')
     date = pd.Timestamp(date_string)
     
     
@@ -430,7 +425,3 @@ def predict_one_day(date_string, target_data_file='project_3_train+test.xlsx'):
 
 
 
-if __name__=='__main__':
-    # general_loop()
-    # date = input()
-    predict_one_day('2018-02-06' )
