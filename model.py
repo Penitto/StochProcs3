@@ -114,9 +114,11 @@ def get_model(data, target):
 
     return res_est[sorted(res_scores, key=lambda x: (-res_scores[x], x))[0]]
 
-def add_tax_dates(df):
+def add_tax_dates(df, example='Target'):
     """
-        В датафрейме должна быть колонка 'Target'
+        df: датафрейм, в который вносим данные
+        example : название столбца, который можно взять как образец формы для np.ones_like
+            default: 'Target'
     """
 
     with open("corporate_tax.json", "r") as read_file:
@@ -126,7 +128,7 @@ def add_tax_dates(df):
         val_add_tax = json.load(read_file)
 
     # Налог на прибыль
-    df['corp_tax'] = np.ones_like(df['Target'].values)
+    df['corp_tax'] = np.ones_like(df[example].values)
     corp = {i : [datetime.datetime.strptime(i, '%Y-%m-%d').date() for i in corporate_tax[i]] for i in corporate_tax}
     for i in df.index:
         # Если не налоговый день
@@ -138,7 +140,7 @@ def add_tax_dates(df):
                 data['corp_tax'][i] = (i.date() - corp[str(i.year)][1]).days / (corp[str(i.year + 1)][0] - corp[str(i.year)][1]).days
 
     # Налог добавленной стоимости
-    df['val_add_tax'] = np.ones_like(df['Target'].values)
+    df['val_add_tax'] = np.ones_like(df[example].values)
     val_add = {i : {j : [datetime.datetime.strptime(k, '%Y-%m-%d').date() for k in val_add_tax[i][j]] for j in val_add_tax[i]} for i in val_add_tax}
     for i in df.index:
         # Если не налоговый день
