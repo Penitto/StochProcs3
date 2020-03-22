@@ -5,9 +5,13 @@ import json
 import matplotlib.pyplot as plt
 import ruptures as rpt
 from cumsum import change_point_detection
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, ElasticNet
+from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
+from sklearn.ensemble import RandomForestRegressor
+from lightgbm import LGBMRegressor
 
-def get_change_point(series, jump, n_bkps, pen):
+
+def get_change_point(series, jump=5, n_bkps=5, pen=10):
     """
 
     series: numpy array please
@@ -48,9 +52,42 @@ def get_change_point(series, jump, n_bkps, pen):
             listOfKeys.append(key)
     return listOfKeys   
 
-def is_change_point(series, jump, n_bkps, pen, lim):
+def is_change_point(series, jump=5, n_bkps=5, pen=10, lim=10):
     res = get_change_point(series, jump, n_bkps, pen)
     return res[-1] >= len(series) - lim
+
+def get_model(data, target):
+    params1 = {'alpha' : np.linspace(0.0001, 1, 100), 
+               'l1_ratio' : np.linspace(0, 1, 100)}
+    
+    params2 = {'n_estimators' : range(10, 101, 10),
+               'max_depth' : range(2,10)}
+
+    params3 = {'learning_rate' : np.linspace(0.0001, 0.3, 50),
+               'n_estimators' : range(10, 101, 10),
+               'max_depth' : range(2, 10)}
+
+    el = ElasticNet()
+    gr_el = GridSearchCV(el, params1, cv=TimeSeriesSplit(), scoring='neg_mean_error')
+    gr_el.fit(data, target)
+
+    rf = RandomForestRegressor()
+    gr_rf = GridSearchCV(rf, params2, cv=TimeSeriesSplit(), scoring='neg_mean_error')
+    gr_rf.fit(data, target)
+
+    lgb = LGBMRegressor()
+    gr_lgb = GridSearchCV(lgb, params3, cv=TimeSeriesSplit(), scoring='neg_mean_error')
+    gr_lgb.fit(data, target)
+
+    res_scores = {'elastic' : gr_el.best_score_, 
+                  'random_forest' : gr_rf.best_score_,
+                  'lgbm' : gr_lgb.best_score_}
+
+    res_est = {'elastic' : gr_el.best_estimator_, 
+               'random_forest' : gr_rf.best_estimator_,
+               'lgbm' : gr_lgb.best_estimator_}
+
+    return res_est[sorted(res_scores, key=lambda x: (-res_scores[x], x))[0]]
 
 def is_weekday(date):
     with open("prod_cal.json", "r") as read_file:
