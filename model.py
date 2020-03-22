@@ -11,6 +11,7 @@ from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression, ElasticNet
 from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import StackingRegressor
 from lightgbm import LGBMRegressor
 import logging 
 import warnings
@@ -20,6 +21,9 @@ from tsfresh.utilities.dataframe_functions import impute
 from tsfresh.feature_extraction import EfficientFCParameters
 from tsfresh import select_features
 import datetime
+from tsfresh.feature_extraction import MinimalFCParameters
+
+
 
 warnings.filterwarnings('ignore')
 
@@ -106,7 +110,8 @@ def get_model(data, target,use_ensemble=True):
     params3 = {'lgb__learning_rate' : np.logspace(-6, 0, 5),
                'lgb__n_estimators' : range(10, 101, 30),
                'lgb__max_depth' : [6,9,12],
-               'pca__n_components':[2,5,10]}
+               'pca__n_components':[2,5,10],
+               'lgb__num_leaves':[100]}
 
 
     rf = Pipeline([
@@ -155,7 +160,6 @@ def get_model(data, target,use_ensemble=True):
                     ('lgbm', gr_lgb.best_estimator_)]
 
 
-        from sklearn.ensemble import StackingRegressor
 
 
         stacked = StackingRegressor(
@@ -181,7 +185,7 @@ def add_tax_dates(df, example='Target'):
         val_add_tax = json.load(read_file)
 
     # Налог на прибыль
-    df['corp_tax'] = np.ones_like(df[example].values)
+    df['corp_tax'] = 1
     corp = {i : [datetime.datetime.strptime(i, '%Y-%m-%d').date() for i in corporate_tax[i]] for i in corporate_tax}
     for i in df.index:
         # Если не налоговый день
@@ -193,7 +197,7 @@ def add_tax_dates(df, example='Target'):
                 df['corp_tax'][i] = (i.date() - corp[str(i.year)][1]).days / (corp[str(i.year + 1)][0] - corp[str(i.year)][1]).days
 
     # Налог добавленной стоимости
-    df['val_add_tax'] = np.ones_like(df[example].values)
+    df['val_add_tax'] = 1
     val_add = {i : {j : [datetime.datetime.strptime(k, '%Y-%m-%d').date() for k in val_add_tax[i][j]] for j in val_add_tax[i]} for i in val_add_tax}
     for i in df.index:
         # Если не налоговый день
@@ -228,7 +232,7 @@ def get_dates_list(target_data_file='project_3_train+test.xlsx'):
         freq='D')
 
     base_index_series=pd.Series(base_index)
-    return base_index_series[~base_index_series.apply(is_weekday)]
+    return base_index_series[~base_index_series.apply(is_weekday)].reset_index(drop=True)
 
 def plotMovingAverage(df, series, n):
     rolling_mean = series.rolling(window=n).mean()
@@ -246,39 +250,26 @@ def call_script(data_file_path, date):
     forecast_on_next_day=None
     return None
 
-# def generate_features(
-#     df #датафрейм со всеми содержательными фичами, даты в качестве индекса 
-#     ):
-#     new_df=df.copy()
-#     pass#логика
-#     return new_df
-
-# def select_features(
-#     df,#датафрейм со всеми фичами, в т ч генерированными
-#     target, #серия с таргетом
-#     ):
-#     return df.columns
 
 def generate_and_select_features(d,t, date):
     original_index = d.index
     thres = d.loc[:date].shape[0]
-    settings = EfficientFCParameters()
+    settings = MinimalFCParameters()
     
     d['time_index'] = d.index
-    d['id'] = np.arange(d.shape[0])
+    d['time_index_id']=d['time_index']
 
-
-    extracted_features = extract_features(d, column_sort="time_index", column_id='id',default_fc_parameters=settings)
+    extracted_features = extract_features(d, column_sort="time_index", column_id='time_index_id',default_fc_parameters=settings,column_kind=None, column_value=None)
+    print(extracted_features.shape)
     extracted_features=extracted_features.loc[:, extracted_features.apply(pd.Series.nunique)>1]
     impute(extracted_features)
     t.index=extracted_features.index
-    features_filtered = select_features(extracted_features.iloc[:thres], t)
+    features_filtered = select_features(extracted_features.iloc[:thres], t.iloc[:thres])
     final_features = extracted_features.loc[:,features_filtered.columns]
     final_features.index = original_index
+    final_features.drop(labels=['time_index','time_index_id'], axis=1, errors='ignore', inplace=True)
+    d.drop(labels=['time_index','time_index_id'], axis=1, errors='ignore', inplace=True)
     return final_features
-
-
-
 
 def get_data(target_data_file='project_3_train+test.xlsx'):
     base_dates = get_dates_list(target_data_file)
@@ -347,7 +338,7 @@ def report_metric(predictions, target_data_file):
         predictions,
         left_index=True,
         right_index=True,
-        how='right'
+        how='left'
     )
     data1.columns = list(data1.columns[:-1]) + ['Predict']
 
@@ -357,12 +348,14 @@ def report_metric(predictions, target_data_file):
     data1['ON_AdjKeyrate'] = data1.apply(lambda x: (x['ON_Keyrate']-1)/365/100 if x['Target'] >= 0 else (x['ON_Keyrate'] + 1)/365/100 , axis=1)
     data1['ON_result'] = data1['Target']*data1['ON_AdjKeyrate']
     data1['Total_result'] = data1['Day_result']+data1['ON_result']
+    data1.dropna(how='any', axis=0,inplace=True)
 
     logger.info(f"Cуммарные издержки за период составили {data1['Total_result'].dropna().sum()} ")
 
 
     errors = sum(np.abs(data1['Predict'] - data1['Target'])>0.15)
     logger.info(f"Cуммарное количество нарушений требуемого интервала точности равно {errors}, {round((errors/data1.shape[0])*3, 2)}%")
+    logger.info(f"Среднее абсолютное отклонение -  { (np.abs(data1['Predict'] - data1['Target'])).mean()}")
     return data1['Total_result'].dropna().sum()
 
 
@@ -371,28 +364,29 @@ PREDICTIONS_FILEPATH='predictions.xlsx'
 
 
 
-def prepare_complete_model_and_data(date,target_data_file):
+def prepare_complete_model_and_data(date,target_data_file, bottom_date=None):
 
+        
     data, target = get_data(target_data_file)
+    if not bottom_date:
+        bottom_date = data.index.min()
     logger.info('Raw data fetched')
-    # full_data = generate_features(data)
     logger.info('New features generated')
-    clean_data = generate_and_select_features(data,target, date)
-    # selected_features = select_features(
-    #     full_data.loc[:date],
-    #     target.loc[   :date],)
-    # clean_data = full_data.loc[:,selected_features]
-    logger.info('New features generated and selected')
+    generated_data = generate_and_select_features(data,target, date)
+    clean_data = pd.concat([
+        data, generated_data
+    ],axis=1)
+    logger.info(f'New features generated and selected, new dataset has {clean_data.shape[1]} features')
     model = get_model(
-        clean_data.loc[:date],
-        target.loc[    :date])
+        clean_data.loc[bottom_date:date],
+        target.loc[    bottom_date:date])
     return model, clean_data, target
 
 
 
 def general_loop(target_data_file='project_3_train+test.xlsx'):
     logger.info('Script started!')
-    datelist = get_dates_list(target_data_file)
+    datelist = get_dates_list(target_data_file).reset_index(drop=True)
     start_date = datelist[STARTING_TICK]
     model, data, target = prepare_complete_model_and_data(start_date,target_data_file)
     logger.info('Initial model and data are ready')
@@ -404,7 +398,39 @@ def general_loop(target_data_file='project_3_train+test.xlsx'):
         if is_change_point(target[:cur_date]):
             logger.info(f'Change-point detected on {cur_date}')
             model, data, target = prepare_complete_model_and_data(cur_date, target_data_file)
-    metric_results = report_metric(target, target_data_file=target_data_file)
+    predictions.name = 'Predict'
+    metric_results = report_metric(predictions, target_data_file=target_data_file)
+
+
+
+
+
+def predict_one_day(date_string, target_data_file='project_3_train+test.xlsx'):
+    logger.info('Script started!')
+    date = pd.Timestamp(date_string)
+    
+    
+    datelist = get_dates_list(target_data_file)
+    if not datelist.loc[datelist==date].index.shape[0]:
+        raise ValueError('Invalid date')
+    date_ix=datelist.loc[datelist==date].index[0]
+    relevant_dates = datelist.iloc[max(0,date_ix-150):date_ix-1]
+    
+    model, data, target = prepare_complete_model_and_data(
+        relevant_dates.iloc[-1],
+        target_data_file,
+        bottom_date=relevant_dates.iloc[0]
+        )
+    logger.info('Model and data are ready')
+    pred = model.predict(data.loc[date].values.reshape(1,-1))[0]
+    logger.info(f'Predicted value - {pred}')
+    pred_series = pd.Series([pred],index=[date])
+    pred_series.name='Predict'
+    metric_results = report_metric(pred_series, target_data_file=target_data_file)
+
+
 
 if __name__=='__main__':
-    general_loop()
+    # general_loop()
+    # date = input()
+    predict_one_day('2018-02-06' )
