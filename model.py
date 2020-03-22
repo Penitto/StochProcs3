@@ -93,15 +93,15 @@ def get_model(data, target):
                'max_depth' : range(2, 10)}
 
     el = ElasticNet()
-    gr_el = GridSearchCV(el, params1, cv=TimeSeriesSplit(), scoring='neg_mean_error')
+    gr_el = GridSearchCV(el, params1, cv=TimeSeriesSplit(), scoring='neg_mean_error',refit=True)
     gr_el.fit(data, target)
 
     rf = RandomForestRegressor()
-    gr_rf = GridSearchCV(rf, params2, cv=TimeSeriesSplit(), scoring='neg_mean_error')
+    gr_rf = GridSearchCV(rf, params2, cv=TimeSeriesSplit(), scoring='neg_mean_error',refit=True)
     gr_rf.fit(data, target)
 
     lgb = LGBMRegressor()
-    gr_lgb = GridSearchCV(lgb, params3, cv=TimeSeriesSplit(), scoring='neg_mean_error')
+    gr_lgb = GridSearchCV(lgb, params3, cv=TimeSeriesSplit(), scoring='neg_mean_error',refit=True)
     gr_lgb.fit(data, target)
 
     res_scores = {'elastic' : gr_el.best_score_, 
@@ -117,14 +117,16 @@ def get_model(data, target):
 def is_weekday(date):
     with open("prod_cal.json", "r") as read_file:
         holidays = json.load(read_file)
-    return True if (date.weekday() == 5) or (date.weekday() == 6) or (date.date().isoformat() in holidays[str(date.year)]) else False
+    return (date.weekday() == 5)|(date.weekday() == 6)|(date.date().isoformat() in holidays[str(date.year)])
 
 def get_dates_list(target_data_file='project_3_train+test.xlsx'):
     base_index = pd.DatetimeIndex(
         start=pd.read_excel(target_data_file)['Date'].min(),
         end=pd.read_excel(target_data_file)['Date'].max(),
         freq='D')
-    return pd.DatetimeIndex([x for x in  base_index if ~is_weekday(x)])
+
+    base_index_series=pd.Series(base_index)
+    return base_index_series[~base_index_series.apply(is_weekday)]
 
 def plotMovingAverage(df, series, n):
     rolling_mean = series.rolling(window=n).mean()
@@ -152,7 +154,6 @@ def generate_features(
 def select_features(
     df,#датафрейм со всеми фичами, в т ч генерированными
     target, #серия с таргетом
-    base_model,
     ):
     y = df.pop('target')
     #логика
@@ -174,13 +175,15 @@ def get_data(date_until,target_data_file='project_3_train+test.xlsx'):
     base_dates = get_dates_list(target_data_file)
     if base_dates.max()>date_until:
         base_dates = base_dates[base_dates<=date_until]
-
+    base_df=pd.DataFrame(index=base_dates)
+    
     target = pd.read_excel(target_data_file)
     target=target.set_index('Date')
+    target=target.loc[base_df.index]
 
     
     
-    data_moex = pd.read_csv('MOEX Russia Historical Data.csv', index_col='Date').iloc[::-1].reset_index()
+    data_moex = pd.read_csv('MOEX Russia Historical Data.csv', index_col='Date',sep=';').iloc[::-1].reset_index()
     data_usdrub = pd.read_csv('USD_RUB Historical Data.csv', index_col='Date').iloc[::-1].reset_index()
     data_brent = pd.read_csv('Brent Oil Futures Historical Data.csv', index_col ='Date').iloc[::-1].reset_index()
 
@@ -202,18 +205,18 @@ def get_data(date_until,target_data_file='project_3_train+test.xlsx'):
     data_keyrate = data_keyrate.rename(columns={'Дата':'Date'})
     data_liquidity = data_liquidity.rename(columns={'Дата':'Date'})
 
-    merge1 = pd.merge(data_moex1, data_usdrub1, on = 'Date')
-    merge2 = pd.merge(merge1, data_brent1, on = 'Date')
-    merge3 = pd.merge(merge2, data_keyrate, on = 'Date')
-    merge4 = pd.merge(merge3, data_liquidity, on = 'Date')
+    econ_data = base_df.join(other=[
+        data_moex1.set_index('Date'),
+        data_usdrub1.set_index('Date'),
+        data_brent1.set_index('Date'),
+        data_keyrate.set_index('Date'),
+        data_liquidity.set_index('Date'),
+    ], how='left')
+    
 
+    econ_data = econ_data.interpolate(method='polynomial', order=3)
+    return econ_data, target
 
-    economic_data = merge4.loc[base_dates]
-    target = target.loc[base_dates]
-    return economic_data, target
-
-def get_model():
-    return LinearRegression
 
 def get_model_spec():
     spec=dict()
@@ -236,17 +239,14 @@ PREDICTIONS_FILEPATH='predictions.xlsx'
 def prepare_complete_model_and_data(date,target_data_file):
 
     data, target = get_data(date, target_data_file)
-    base_model = get_model()
     full_data = generate_features(data)
     selected_features = select_features(
         full_data.loc[:date],
-        target.loc[   :date],
-        base_model)
+        target.loc[   :date],)
     clean_data = full_data.loc[:,selected_features]
-    model = calibrate_hyper(
+    model = get_model(
         clean_data.loc[:data],
-        target.loc[    :data],
-        base_model)
+        target.loc[    :data])
     return model, clean_data, target
 
 
@@ -264,6 +264,4 @@ def general_loop(target_data_file):
             logger.info(f'Change-point detected on {cur_date}')
             model, data, target = prepare_complete_model_and_data(cur_date, target_data_file)
     metric_results = report_metric(target, predictions)
-
-# def predict_on_date(date):
 
