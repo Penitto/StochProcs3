@@ -57,6 +57,13 @@ def is_weekday(date):
         holidays = json.load(read_file)
     return True if (date.weekday() == 5) or (date.weekday() == 6) or (date.date().isoformat() in holidays[str(date.year)]) else False
 
+def get_dates_list(target_data_file='project_3_train+test.xlsx'):
+    base_index = pd.DatetimeIndex(
+        start=pd.read_excel(target_data_file)['Date'].min(),
+        end=pd.read_excel(target_data_file)['Date'].max(),
+        freq='D')
+    return pd.DatetimeIndex([x for x in  base_index if ~is_weekday(x)])
+
 def plotMovingAverage(df, series, n):
     rolling_mean = series.rolling(window=n).mean()
 
@@ -101,17 +108,47 @@ def calibrate_hyper(
     return trained_model
 
 
-def get_data(date_until,target_data_file):
-    df = None
-    target=None
-    return df, target
+def get_data(date_until,target_data_file='project_3_train+test.xlsx'):
+    base_dates = get_dates_list(target_data_file)
+    if base_dates.max()>date_until:
+        base_dates = base_dates[base_dates<=date_until]
 
-def get_dates_list(target_data_file='project_3_train+test.xlsx'):
-    base_index = pd.DatetimeIndex(
-        start=pd.read_excel(target_data_file)['Date'].min(),
-        end=pd.read_excel(target_data_file)['Date'].max(),
-        freq='D')
-    return pd.DatetimeIndex([x for x in  base_index if ~is_weekday(x)])
+    target = pd.read_excel(target_data_file)
+    target=target.set_index('Date')
+
+    
+    
+    data_moex = pd.read_csv('MOEX Russia Historical Data.csv', index_col='Date').iloc[::-1].reset_index()
+    data_usdrub = pd.read_csv('USD_RUB Historical Data.csv', index_col='Date').iloc[::-1].reset_index()
+    data_brent = pd.read_csv('Brent Oil Futures Historical Data.csv', index_col ='Date').iloc[::-1].reset_index()
+
+    data_moex['Date'] = pd.to_datetime(data_moex['Date'])
+    data_usdrub['Date'] = pd.to_datetime(data_usdrub['Date'])
+    data_brent['Date'] = pd.to_datetime(data_brent['Date'])
+    
+    data_moex = data_moex.rename(columns={'Price':'MOEX'})
+    data_usdrub = data_usdrub.rename(columns={'Price':'USDRUB'})
+    data_brent = data_brent.rename(columns={'Price':'BRENT'})
+    
+    data_moex1 = data_moex[['Date', 'MOEX']]
+    data_usdrub1 = data_usdrub[['Date', 'USDRUB']]
+    data_brent1 = data_brent[['Date', 'BRENT']]
+
+    data_keyrate = pd.read_excel('keyrate_cbr.xlsx').iloc[::-1].reset_index(drop=True)
+    data_liquidity = pd.read_excel('liquidity_cbr.xlsx').iloc[::-1].reset_index(drop=True)
+    
+    data_keyrate = data_keyrate.rename(columns={'Дата':'Date'})
+    data_liquidity = data_liquidity.rename(columns={'Дата':'Date'})
+
+    merge1 = pd.merge(data_moex1, data_usdrub1, on = 'Date')
+    merge2 = pd.merge(merge1, data_brent1, on = 'Date')
+    merge3 = pd.merge(merge2, data_keyrate, on = 'Date')
+    merge4 = pd.merge(merge3, data_liquidity, on = 'Date')
+
+
+    economic_data = merge4.loc[base_dates]
+    target = target.loc[base_dates]
+    return economic_data, target
 
 def get_model():
     return LinearRegression
@@ -136,7 +173,7 @@ PREDICTIONS_FILEPATH='predictions.xlsx'
 
 def prepare_complete_model_and_data(date,target_data_file):
 
-    data, target = get_data(target_data_file)
+    data, target = get_data(date, target_data_file)
     base_model = get_model()
     full_data = generate_features(data)
     selected_features = select_features(
