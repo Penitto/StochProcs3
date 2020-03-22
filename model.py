@@ -115,6 +115,10 @@ def get_model(data, target):
     return res_est[sorted(res_scores, key=lambda x: (-res_scores[x], x))[0]]
 
 def add_tax_dates(df):
+    """
+        В датафрейме должна быть колонка 'Target'
+    """
+
     with open("corporate_tax.json", "r") as read_file:
         corporate_tax = json.load(read_file)
 
@@ -134,7 +138,22 @@ def add_tax_dates(df):
                 data['corp_tax'][i] = (i.date() - corp[str(i.year)][1]).days / (corp[str(i.year + 1)][0] - corp[str(i.year)][1]).days
 
     # Налог добавленной стоимости
-    #df['val_add_tax'] 
+    df['val_add_tax'] = np.ones_like(df['Target'].values)
+    val_add = {i : {j : [datetime.datetime.strptime(k, '%Y-%m-%d').date() for k in val_add_tax[i][j]] for j in val_add_tax[i]} for i in val_add_tax}
+    for i in df.index:
+        # Если не налоговый день
+        if ((i > val_add[str(i.year)]['1'][1]) and (i < val_add[str(i.year)]['2'][0])) \
+            or ((i > val_add[str(i.year)]['2'][1]) and (i < val_add[str(i.year)]['3'][0])) \
+            or ((i > val_add[str(i.year)]['3'][1]) and (i < val_add[str(i.year)]['4'][0])) \
+            or ((i > val_add[str(i.year)]['4'][1]) and (i < val_add[str(i.year + 1)]['1'][0])):
+                if i.quarter == 1:
+                    df['val_add_tax'][i] = (i.date() - val_add[str(i.year)]['1'][1]).days / (val_add[str(i.year)]['2'][0] - val_add[str(i.year)]['1'][1]).days
+                elif i.quarter == 2:
+                    df['val_add_tax'][i] = (i.date() - val_add[str(i.year)]['2'][1]).days / (val_add[str(i.year)]['3'][0] - val_add[str(i.year)]['2'][1]).days
+                elif i.quarter == 3:
+                    df['val_add_tax'][i] = (i.date() - val_add[str(i.year)]['3'][1]).days / (val_add[str(i.year)]['4'][0] - val_add[str(i.year)]['3'][1]).days
+                else:
+                    df['val_add_tax'][i] = (i.date() - val_add[str(i.year)]['4'][1]).days / (val_add[str(i.year + 1)]['1'][0] - val_add[str(i.year)]['4'][1]).days
 
     return df
 
