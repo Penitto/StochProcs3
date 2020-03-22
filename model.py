@@ -93,15 +93,15 @@ def get_model(data, target):
                'max_depth' : range(2, 10)}
 
     el = ElasticNet()
-    gr_el = GridSearchCV(el, params1, cv=TimeSeriesSplit(), scoring='neg_mean_error')
+    gr_el = GridSearchCV(el, params1, cv=TimeSeriesSplit(), scoring='neg_mean_error',refit=True)
     gr_el.fit(data, target)
 
     rf = RandomForestRegressor()
-    gr_rf = GridSearchCV(rf, params2, cv=TimeSeriesSplit(), scoring='neg_mean_error')
+    gr_rf = GridSearchCV(rf, params2, cv=TimeSeriesSplit(), scoring='neg_mean_error',refit=True)
     gr_rf.fit(data, target)
 
     lgb = LGBMRegressor()
-    gr_lgb = GridSearchCV(lgb, params3, cv=TimeSeriesSplit(), scoring='neg_mean_error')
+    gr_lgb = GridSearchCV(lgb, params3, cv=TimeSeriesSplit(), scoring='neg_mean_error',refit=True)
     gr_lgb.fit(data, target)
 
     res_scores = {'elastic' : gr_el.best_score_, 
@@ -152,7 +152,6 @@ def generate_features(
 def select_features(
     df,#датафрейм со всеми фичами, в т ч генерированными
     target, #серия с таргетом
-    base_model,
     ):
     y = df.pop('target')
     #логика
@@ -212,8 +211,6 @@ def get_data(date_until,target_data_file='project_3_train+test.xlsx'):
     target = target.loc[base_dates]
     return economic_data, target
 
-def get_model():
-    return LinearRegression
 
 def get_model_spec():
     spec=dict()
@@ -236,17 +233,14 @@ PREDICTIONS_FILEPATH='predictions.xlsx'
 def prepare_complete_model_and_data(date,target_data_file):
 
     data, target = get_data(date, target_data_file)
-    base_model = get_model()
     full_data = generate_features(data)
     selected_features = select_features(
         full_data.loc[:date],
-        target.loc[   :date],
-        base_model)
+        target.loc[   :date],)
     clean_data = full_data.loc[:,selected_features]
-    model = calibrate_hyper(
+    model = get_model(
         clean_data.loc[:data],
-        target.loc[    :data],
-        base_model)
+        target.loc[    :data])
     return model, clean_data, target
 
 
