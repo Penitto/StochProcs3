@@ -217,11 +217,13 @@ def general_loop(target_data_file):
     datelist = get_dates_list(target_data_file)
     start_date = datelist[STARTING_TICK]
     model, data, target = prepare_complete_model_and_data(start_date,target_data_file)
+    logger.info('Initial model and data are ready')
     predictions = pd.Series(index=target.index)
     for day_count, cur_date in enumerate(datelist[STARTING_TICK+1:]):
         predictions[cur_date] = model.predict(data.loc[cur_date])
         predictions.to_excel(PREDICTIONS_FILEPATH)
         if is_change_point(target[:cur_date]):
+            logger.info(f'Change-point detected on {cur_date}')
             model, data, target = prepare_complete_model_and_data(cur_date, target_data_file)
     metric_results = report_metric(target, predictions)
 
