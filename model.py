@@ -88,7 +88,7 @@ def select_features(
     y = df.pop('target')
     #логика
     selected_features=[]
-    return df[selected_features+[target_name]]
+    return selected_features
 
 
 
@@ -106,9 +106,12 @@ def get_data(date_until,target_data_file):
     target=None
     return df, target
 
-def get_dates_list(target_data_file):
-    dates=[]
-    return dates
+def get_dates_list(target_data_file='project_3_train+test.xlsx'):
+    base_index = pd.DatetimeIndex(
+        start=pd.read_excel(target_data_file)['Date'].min(),
+        end=pd.read_excel(target_data_file)['Date'].max(),
+        freq='D')
+    return pd.DatetimeIndex([x for x in  base_index if ~is_weekday(x)])
 
 def get_model():
     return LinearRegression
@@ -157,7 +160,7 @@ def general_loop(target_data_file):
     for day_count, cur_date in enumerate(datelist[STARTING_TICK+1:]):
         predictions[cur_date] = model.predict(data.loc[cur_date])
         predictions.to_excel(PREDICTIONS_FILEPATH)
-        if detect_change_point(target[:cur_date]):
+        if is_change_point(target[:cur_date]):
             model, data, target = prepare_complete_model_and_data(cur_date, target_data_file)
     metric_results = report_metric(target, predictions)
 
