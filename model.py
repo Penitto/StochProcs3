@@ -93,15 +93,15 @@ def get_model(data, target):
                'max_depth' : range(2, 10)}
 
     el = ElasticNet()
-    gr_el = GridSearchCV(el, params1, cv=TimeSeriesSplit(), scoring='neg_mean_error',refit=True)
+    gr_el = GridSearchCV(el, params1, cv=TimeSeriesSplit(), scoring='neg_mean_absolute_error')
     gr_el.fit(data, target)
 
     rf = RandomForestRegressor()
-    gr_rf = GridSearchCV(rf, params2, cv=TimeSeriesSplit(), scoring='neg_mean_error',refit=True)
+    gr_rf = GridSearchCV(rf, params2, cv=TimeSeriesSplit(), scoring='neg_mean_absolute_error')
     gr_rf.fit(data, target)
 
     lgb = LGBMRegressor()
-    gr_lgb = GridSearchCV(lgb, params3, cv=TimeSeriesSplit(), scoring='neg_mean_error',refit=True)
+    gr_lgb = GridSearchCV(lgb, params3, cv=TimeSeriesSplit(), scoring='neg_mean_absolute_error')
     gr_lgb.fit(data, target)
 
     res_scores = {'elastic' : gr_el.best_score_, 
@@ -113,6 +113,34 @@ def get_model(data, target):
                'lgbm' : gr_lgb.best_estimator_}
 
     return res_est[sorted(res_scores, key=lambda x: (-res_scores[x], x))[0]]
+
+def add_tax_dates(df):
+    with open("corporate_tax.json", "r") as read_file:
+        corporate_tax = json.load(read_file)
+
+    with open("value_added_tax.json", "r") as read_file:
+        val_add_tax = json.load(read_file)
+
+    # Налог на прибыль
+    df['corp_tax'] = np.ones_like(df['Target'].values)
+    corp = {i : [datetime.datetime.strptime(i, '%Y-%m-%d').date() for i in corporate_tax[i]] for i in corporate_tax}
+    for i in df.index:
+        # Если не налоговый день
+        if not ((i >= corp[str(i.year)][0]) and (i <= corp[str(i.year)][1])):
+            # Если до первого марта
+            if corp[str(i.year)][0] > i:
+                data['corp_tax'][i] = (i.date() - corp[str(i.year - 1)][1]).days / (corp[str(i.year)][0] - corp[str(i.year - 1)][1]).days
+            else:
+                data['corp_tax'][i] = (i.date() - corp[str(i.year)][1]).days / (corp[str(i.year + 1)][0] - corp[str(i.year)][1]).days
+
+    # Налог добавленной стоимости
+    #df['val_add_tax'] 
+
+    return df
+
+
+
+
 
 def is_weekday(date):
     with open("prod_cal.json", "r") as read_file:
