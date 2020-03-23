@@ -248,9 +248,11 @@ def call_script(data_file_path, date):
     return None
 
 
-def generate_and_select_features(d,t, date):
+def generate_and_select_features(d,t, date, bottom_date):
     original_index = d.index
-    thres = d.loc[:date].shape[0]
+    
+    upper = [x for x in d.index].index(date)
+    bottom = [x for x in d.index].index(bottom_date)
     settings = MinimalFCParameters()
     
     d['time_index'] = d.index
@@ -261,7 +263,7 @@ def generate_and_select_features(d,t, date):
     extracted_features=extracted_features.loc[:, extracted_features.apply(pd.Series.nunique)>1]
     impute(extracted_features)
     t.index=extracted_features.index
-    features_filtered = select_features(extracted_features.iloc[:thres], t.iloc[:thres])
+    features_filtered = select_features(extracted_features.iloc[max(0,bottom-50):upper], t.iloc[max(0,bottom-50):upper])
     final_features = extracted_features.loc[:,features_filtered.columns]
     final_features.index = original_index
     final_features.drop(labels=['time_index','time_index_id'], axis=1, errors='ignore', inplace=True)
@@ -349,13 +351,15 @@ def report_metric(predictions, target_data_file):
 
 
     errors = sum(np.abs(data1['Predict'] - data1['Target'])>0.15)
-    logger.info(f"Cуммарное количество нарушений требуемого интервала точности равно {errors}, {round((errors/data1.shape[0])*3, 2)}%")
+    logger.info(f"Cуммарное количество нарушений требуемого интервала точности равно {errors}, {round((errors/data1.shape[0])*100, 2)}%")
     logger.info(f"Среднее абсолютное отклонение -  { (np.abs(data1['Predict'] - data1['Target'])).mean()}")
     return data1['Total_result'].dropna().sum()
 
 
 STARTING_TICK=100
+RETRAIN_HORIZON=80
 PREDICTIONS_FILEPATH='predictions.xlsx'
+
 
 
 
@@ -367,7 +371,7 @@ def prepare_complete_model_and_data(date,target_data_file, bottom_date=None):
         bottom_date = data.index.min()
     logger.info('Raw data fetched')
     logger.info('New features generated')
-    generated_data = generate_and_select_features(data,target, date)
+    generated_data = generate_and_select_features(data,target, date, bottom_date=bottom_date)
     clean_data = pd.concat([
         data, generated_data
     ],axis=1)
@@ -383,16 +387,66 @@ def general_loop(target_data_file='project_3_train+test.xlsx'):
     logger.info('Script for total history started!')
     datelist = get_dates_list(target_data_file).reset_index(drop=True)
     start_date = datelist[STARTING_TICK]
-    model, data, target = prepare_complete_model_and_data(start_date,target_data_file)
+    model, data, target = prepare_complete_model_and_data(start_date,target_data_file,)
     logger.info('Initial model and data are ready')
     predictions = pd.Series(index=datelist)
-    for day_count, cur_date in enumerate(datelist.values[STARTING_TICK+1:]):
+    streak=0
+    retrain=False
+    last_change= -10
+    for day_count, cur_date in datelist.iloc[STARTING_TICK:].reset_index().values:
         predictions.loc[cur_date] = model.predict(data.loc[cur_date].values.reshape(1,-1))
         predictions.to_excel(PREDICTIONS_FILEPATH)
-        logger.info(f'Day {day_count} predicted, absolute error of {np.abs(predictions.loc[cur_date]-target.loc[cur_date])}')
-        if is_change_point(target[:cur_date]):
+        logger.info(f'Day {day_count} predicted, absolute error of {round(np.abs(predictions.loc[cur_date]-target.loc[cur_date]),3)}')
+        streak+=1
+        last_change+=1
+        if is_change_point(target[:cur_date])&(last_change>0):
             logger.info(f'Change-point detected on {cur_date}')
-            model, data, target = prepare_complete_model_and_data(cur_date, target_data_file)
+            retrain=True
+            last_change = -10
+        if (streak>15):
+            logger.info(f'Model is likely old, time to retrain')
+            retrain=True
+        if retrain:
+            streak=0
+            bottom = datelist.iloc[day_count-RETRAIN_HORIZON]
+            model, data, target = prepare_complete_model_and_data(cur_date, target_data_file,bottom_date=bottom)
+    predictions.name = 'Predict'
+    metric_results = report_metric(predictions, target_data_file=target_data_file)
+
+
+def predict_from_date(date_string,target_data_file='project_3_train+test.xlsx'):
+    logger.info('Script for total history started!')
+    start_date = pd.Timestamp(date_string)
+
+    datelist = get_dates_list(target_data_file).reset_index(drop=True)
+    if not datelist.loc[datelist==start_date].index.shape[0]:
+        raise ValueError('Invalid date')
+    date_ix=datelist.loc[datelist==start_date].index[0]
+
+    model, data, target = prepare_complete_model_and_data(start_date,target_data_file,)
+    logger.info('Initial model and data are ready')
+    predictions = pd.Series(index=datelist)
+    streak = 0
+    retrain = False
+    last_change = -10
+    for day_count, cur_date in datelist.iloc[date_ix:].reset_index().values:
+        predictions.loc[cur_date] = model.predict(data.loc[cur_date].values.reshape(1,-1))
+        predictions.to_excel(PREDICTIONS_FILEPATH)
+        logger.info(f'Day {day_count} predicted, absolute error of {round(np.abs(predictions.loc[cur_date]-target.loc[cur_date]),3)}')
+        streak+=1
+        last_change+=1
+        if is_change_point(target[:cur_date])&last_change>0:
+            logger.info(f'Change-point detected on {cur_date}')
+            retrain=True
+            last_change = -10
+        if (streak>15):
+            logger.info(f'Model is likely old, time to retrain')
+            retrain=True
+        if retrain:
+            retrain=False
+            streak=0
+            bottom = datelist.iloc[day_count-RETRAIN_HORIZON]
+            model, data, target = prepare_complete_model_and_data(cur_date, target_data_file,bottom_date=bottom)
     predictions.name = 'Predict'
     metric_results = report_metric(predictions, target_data_file=target_data_file)
 
