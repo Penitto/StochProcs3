@@ -407,6 +407,7 @@ def general_loop(target_data_file='project_3_train+test.xlsx'):
             logger.info(f'Model is likely old, time to retrain')
             retrain=True
         if retrain:
+            retrain=False
             streak=0
             bottom = datelist.iloc[day_count-RETRAIN_HORIZON]
             model, data, target = prepare_complete_model_and_data(cur_date, target_data_file,bottom_date=bottom)
